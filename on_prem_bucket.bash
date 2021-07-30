@@ -13,6 +13,13 @@ read service_account_key_path
 #gcloud auth activate-service-account tcsdemo2021@appspot.gserviceaccount.com --key-file=/Users/admin/Downloads/tcsdemo2021-04b6026c9cf9.json
 gcloud auth activate-service-account ${service_account} --key-file=${service_account_key_path}
 
+echo "COnnecting to VM instance and extracting the data"
+echo "Please wait...."
+sleep 2
+gcloud compute ssh mysqlpoc --command 'bash hello.bash'
+gsutil cp gs
+echo "extracted and available in your local folder"
+
 # Create a bucket in gcp to move data from on premise to cloud
 echo “Please enter the bucket name you want to create - Note: Time stamp HHMMS will be attached at the end of the bucket name for uniqueness”
 read bucket_name;
