@@ -9,3 +9,193 @@ go get go.opencensus.io
 go get contrib.go.opencensus.io/exporter/stackdriver
 go mod init test3
 go mod tidy
+
+
+
+************install agent
+
+curl -sSO https://dl.google.com/cloudagents/add-monitoring-agent-repo.sh
+sudo bash add-monitoring-agent-repo.sh
+
+sudo apt-get update
+sudo apt-get install stackdriver-agent
+
+***********Now run the Logging agent install script command in the SSH terminal of your VM instance to install the Cloud Logging agent:
+
+curl -sSO https://dl.google.com/cloudagents/add-logging-agent-repo.sh
+sudo bash add-logging-agent-repo.sh
+sudo apt-get update
+sudo apt-get install google-fluentd
+
+
+
+******Create a basic application server in Go
+*******Next, create a fake video server application that is going to check the size of its input queue every second and output that information to the console (you'll fake out the actual queue).
+
+*******In the SSH window, use your favorite editor (nano, vi, etc.) to create a file called main.go written in Go. For example:
+
+nano main.go
+
+
+*****Copy the following into your file:
+
+package main
+import (
+        "fmt"
+        "math/rand"
+        "time"
+)
+func main() {
+        // Here's our fake video processing application. Every second, it
+        // checks the length of the input queue (e.g., number of videos
+        // waiting to be processed) and records that information.
+        for {
+                time.Sleep(1 * time.Second)
+                queueSize := getQueueSize()
+                // Record the queue size.
+                fmt.Println("Queue size: ", queueSize)
+        }
+}
+func getQueueSize() (int64) {
+        // Fake out a queue size here by returning a random number between
+        // 1 and 100.
+        return rand.Int63n(100) + 1
+}
+
+
+******Save the file by pressing Ctrl + X, Y and Enter.
+
+*******Run the file with:
+
+export PATH=$PATH:/usr/local/go/bin
+
+go run main.go
+
+********You should see output like the following, with a new output line appearing every second:
+
+****Queue size: 11
+*****Queue size: 52
+...
+******Use Ctrl + C to stop the output.
+
+
+****Defining & recording measures using OpenCensus
+****To put in place the basic infrastructure for propagating metrics (stats) via OpenCensus, you need to define a measure, record it, then set up a view that allows the measure to be collected and aggregated.
+
+*****You'll do all of the above in a couple of steps added to the main.go file.
+
+*****Open your main.go file in your text editor:
+
+nano main.go
+******Start by defining and recording the measure.
+
+******Add the changes identified by // [[Add this line]] or // [[Add this block]] … // [[End: add this block]] to your file, then uncomment the added lines and remove the instructions:
+
+package main
+import (
+"context" // [[Add this line]]
+"fmt"
+"math/rand"
+"time"
+"go.opencensus.io/stats"  // [[Add this line]]
+)
+// [[Add this block]]
+var videoServiceInputQueueSize = stats.Int64(
+"my.videoservice.org/measure/input_queue_size",
+"Number of videos queued up in the input queue",
+stats.UnitDimensionless)
+// [[End: add this block]]
+func main() {
+ctx := context.Background()  // [[Add: this line.]]
+// Here’s our fake video processing application. Every second, it
+// checks the length of the input queue (e.g., number of videos
+// waiting to be processed) and records that information.
+for {
+time.Sleep(1 * time.Second)
+queueSize := getQueueSize()
+// Record the queue size.
+// [[Add: next line.]]
+stats.Record(ctx, videoServiceInputQueueSize.M(queueSize)) // [[Add]]
+fmt.Println("Queue size: ", queueSize)
+}
+}
+func getQueueSize() (int64) {
+// Fake out a queue size here by returning a random number between
+// 1 and 100.
+return rand.Int63n(100) + 1
+}
+
+
+****The go.opencensus.io/stats package contains all of the support you need to define and record measures.
+
+*****In this example, videoServiceInputQueueSize is the measure. It's defined it as a 64-bit integer type. Each measure requires a name (the first parameter), a description, and a measurement unit.
+
+*******A measure that has been defined also needs to be recorded. The stats.Record(...) statement sets the measure, videoServiceInputQueueSize, to the size queried, queueSize.
+
+
+******** final main.go
+package main
+import (
+"context"
+"fmt"
+"log"
+"math/rand"
+"os"        // [[Add]]
+"time"
+"contrib.go.opencensus.io/exporter/stackdriver"   // [[Add]]
+"go.opencensus.io/stats"
+"go.opencensus.io/stats/view"
+monitoredrespb "google.golang.org/genproto/googleapis/api/monitoredres" // [[Add]]
+)
+var videoServiceInputQueueSize = stats.Int64(
+"my.videoservice.org/measure/input_queue_size",
+"Number of videos queued up in the input queue",
+stats.UnitDimensionless)
+func main() {
+// [[Add block]]
+// Setup metrics exporting to Stackdriver.
+exporter, err := stackdriver.NewExporter(stackdriver.Options{
+ProjectID: os.Getenv("MY_PROJECT_ID"),
+Resource: &monitoredrespb.MonitoredResource {
+Type: "gce_instance",
+Labels: map[string]string {
+"instance_id": os.Getenv("MY_GCE_INSTANCE_ID"),
+"zone": os.Getenv("MY_GCE_INSTANCE_ZONE"),
+},
+},
+})
+if err != nil {
+log.Fatalf("Cannot setup Stackdriver exporter: %v", err)
+}
+view.RegisterExporter(exporter)
+// [[End: add block]]
+ctx := context.Background()
+// Setup a view so that we can export our metric.
+if err := view.Register(&view.View{
+Name: "my.videoservice.org/measure/input_queue_size",
+Description: "Number of videos queued up in the input queue",
+Measure: videoServiceInputQueueSize,
+Aggregation: view.LastValue(),
+}); err != nil {
+log.Fatalf("Cannot setup view: %v", err)
+}
+// Set the reporting period to be once per second.
+view.SetReportingPeriod(1 * time.Second)
+// Here’s our fake video processing application. Every second, it
+// checks the length of the input queue (e.g., number of videos
+// waiting to be processed) and records that information.
+for {
+time.Sleep(1 * time.Second)
+queueSize := getQueueSize()
+// Record the queue size.
+stats.Record(ctx, videoServiceInputQueueSize.M(queueSize))
+fmt.Println("Queue size: ", queueSize)
+}
+}
+func getQueueSize() (int64) {
+// Fake out a queue size here by returning a random number between
+// 1 and 100.
+return rand.Int63n(100) + 1
+}
+
+
