@@ -1,0 +1,11 @@
+sudo curl -O https://storage.googleapis.com/golang/go1.16.2.linux-amd64.tar.gz
+sudo tar -xvf go1.16.2.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo mv go /usr/local
+sudo apt-get update
+sudo apt-get install git
+export PATH=$PATH:/usr/local/go/bin
+go get go.opencensus.io
+go get contrib.go.opencensus.io/exporter/stackdriver
+go mod init test3
+go mod tidy
