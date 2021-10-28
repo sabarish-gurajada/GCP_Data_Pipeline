@@ -1,0 +1,4 @@
+sudo apt-get git
+
+
+manage jenkins --> jenkins plugin --> availabe --> github
