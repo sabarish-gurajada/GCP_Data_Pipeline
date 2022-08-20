@@ -1,0 +1,2 @@
+gsutil cp gs://cloud-training/migration_summit/ms001/autonetdeploy-multicloudvpn.zip .
+unzip autonetdeploy-multicloudvpn.zip
